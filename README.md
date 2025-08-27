@@ -81,10 +81,10 @@ Public Sub RunReport()
     Set wsOut = ThisWorkbook.Sheets.Add
     wsOut.Name = "FilteredData"
     
-    wsOut.Range("A1:N1").Value = Array("EmpID","Name","Designation","Team","JoinYear", _
+    wsOut.Range("A1:O1").Value = Array("EmpID","Name","Designation","Team","JoinYear", _
         "PL_Balance","SL_Balance","CL_Balance", _
         "PL_Accrued","SL_Accrued","CL_Accrued", _
-        "PL_Taken","SL_Taken","CL_Taken")
+        "PL_Taken","SL_Taken","CL_Taken","Net_Leave")
     
     ' load balances
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
@@ -115,21 +115,32 @@ Public Sub RunReport()
         
         Call ComputeAccruals(doj, asOf, plAcc, slAcc, clAcc)
         
-        Dim plTaken#, slTaken#, clTaken#
+        Dim plTaken#, slTaken#, clTaken#, netLeave#
         plTaken = plAcc - plBal
         slTaken = slAcc - slBal
         clTaken = clAcc - clBal
+        netLeave = plTaken + slTaken + clTaken
         
-        wsOut.Cells(rowOut, 1).Resize(1, 14).Value = Array(empId, nm, des, tm, jy, _
+        wsOut.Cells(rowOut, 1).Resize(1, 15).Value = Array(empId, nm, des, tm, jy, _
             plBal, slBal, clBal, _
             Round(plAcc, 2), Round(slAcc, 2), Round(clAcc, 2), _
-            Round(plTaken, 2), Round(slTaken, 2), Round(clTaken, 2))
+            Round(plTaken, 2), Round(slTaken, 2), Round(clTaken, 2), Round(netLeave, 2))
         rowOut = rowOut + 1
     Next r
     
+    ' === Sort by Net_Leave descending (column 15) ===
+    With wsOut.Sort
+        .SortFields.Clear
+        .SortFields.Add Key:=wsOut.Range("O2:O" & rowOut - 1), _
+            SortOn:=xlSortOnValues, Order:=xlDescending, DataOption:=xlSortNormal
+        .SetRange wsOut.Range("A1:O" & rowOut - 1)
+        .Header = xlYes
+        .Apply
+    End With
+    
     ApplyFormatting wsOut
     wsOut.Columns.AutoFit
-    MsgBox "Report ready with accruals & taken leaves.", vbInformation
+    MsgBox "Report ready with accruals, taken leaves & net leave (sorted).", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
     
@@ -143,29 +154,23 @@ Private Sub ApplyFormatting(ws As Worksheet)
     Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     If lastRow < 2 Then Exit Sub
     
-    Dim maxBal As Double
-    maxBal = Application.Max(ws.Range("F2:H" & lastRow)) ' highest among PL/SL/CL balances
+    ' find max Net_Leave
+    Dim maxNet As Double
+    maxNet = Application.Max(ws.Range("O2:O" & lastRow))
     
     Dim r As Long
     For r = 2 To lastRow
-        Dim plTaken As Double, slTaken As Double, clTaken As Double
-        Dim diff As Double
+        Dim netLeave As Double
+        netLeave = ws.Cells(r, 15).Value
         
-        plTaken = ws.Cells(r, 12).Value
-        slTaken = ws.Cells(r, 13).Value
-        clTaken = ws.Cells(r, 14).Value
-        diff = (plTaken + slTaken + clTaken)
-        
-        ' highlight negative diff
-        If diff < 0 Then
+        ' highlight negative net leave
+        If netLeave < 0 Then
             ws.Rows(r).Interior.Color = vbRed
             ws.Rows(r).Font.Color = vbWhite
         End If
         
-        ' highest balance row
-        Dim rowBal As Double
-        rowBal = Application.Max(ws.Cells(r, 6).Resize(1, 3))
-        If rowBal = maxBal Then
+        ' highlight row with max net leave
+        If netLeave = maxNet Then
             ws.Rows(r).Interior.Color = vbGreen
             ws.Rows(r).Font.Color = vbBlack
         End If
