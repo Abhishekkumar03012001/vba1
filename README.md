@@ -147,24 +147,8 @@ Public Sub RunReport()
         .Apply
     End With
 
-    ' ===== HIGHLIGHTING =====
-    Dim maxLeave As Double, i As Long
-    maxLeave = Application.WorksheetFunction.Max(wsOut.Range("O2:O" & lastRow))
-
-    For i = 2 To lastRow
-        ' Highlight only the Net_Leave cell if it's max
-        If wsOut.Cells(i, 15).Value = maxLeave Then
-            wsOut.Cells(i, 15).Interior.Color = vbGreen
-        End If
-
-        ' Highlight PL_Taken + SL_Taken + CL_Taken if negative
-        If wsOut.Cells(i, 12).Value + wsOut.Cells(i, 13).Value + wsOut.Cells(i, 14).Value < 0 Then
-            wsOut.Range(wsOut.Cells(i, 12), wsOut.Cells(i, 14)).Interior.Color = vbRed
-        End If
-    Next i
-
     wsOut.Columns.AutoFit
-    MsgBox "Report ready with accruals, taken leaves, Net_Leave (sorted + highlighted).", vbInformation
+    MsgBox "Report ready with accruals, taken leaves & Net_Leave (sorted).", vbInformation
 
     Application.ScreenUpdating = True
     Exit Sub
