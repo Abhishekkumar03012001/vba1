@@ -21,3 +21,10 @@ Sub ClearAllFilters()
     Next ws
     MsgBox "🔄 All filters cleared!"
 End Sub
+
+B4:  Year of Joining   (dropdown from Lists!A:A; include “All”)
+B5:  Designation       (dropdown from Lists!B:B; include “All”)
+B6:  Team              (dropdown from Lists!C:C; include “All”)
+B8:  Leave Type        (dropdown: Total, PL, SL, CL)
+B9:  Metric            (dropdown: Balance, Accumulated, Taken)
+B10: Top N             (number, default 10)
