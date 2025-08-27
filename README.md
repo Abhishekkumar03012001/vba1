@@ -132,10 +132,23 @@ Public Sub RunReport()
         rowOut = rowOut + 1
     Next r
 
+    ' ===== SORT BY Net_Leave (column 15) DESCENDING =====
+    Dim lastRow As Long
+    lastRow = wsOut.Cells(wsOut.Rows.Count, "A").End(xlUp).Row
+    wsOut.Sort.SortFields.Clear
+    wsOut.Sort.SortFields.Add Key:=wsOut.Range("O2:O" & lastRow), _
+        SortOn:=xlSortOnValues, Order:=xlDescending, DataOption:=xlSortNormal
+
+    With wsOut.Sort
+        .SetRange wsOut.Range("A1:O" & lastRow)
+        .Header = xlYes
+        .Apply
+    End With
+
     ApplyFormatting wsOut
     wsOut.Columns.AutoFit
 
-    MsgBox "Report ready with accruals, taken leaves & net leave.", vbInformation
+    MsgBox "Report ready with accruals, taken leaves & net leave (sorted).", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
 
