@@ -21,7 +21,7 @@ Private Const LV_PL As String = "PL"
 Private Const LV_SL As String = "SL"
 Private Const LV_CL As String = "CL"
 
-' Dashboard
+' Dashboard helpers
 Private Function Dsh() As Worksheet: Set Dsh = ThisWorkbook.Sheets("Dashboard"): End Function
 Private Function AsOfDateVal() As Date: AsOfDateVal = Dsh.Range("B2").Value: End Function
 
@@ -39,14 +39,14 @@ Private Sub ComputeAccruals(ByVal doj As Date, ByVal asOf As Date, _
     ByRef plAcc As Double, ByRef slAcc As Double, ByRef clAcc As Double)
 
     Dim startDate As Date
-    startDate = Application.Max(doj, DateSerial(2010, 1, 1))   ' All start from 1-Jan-2010
+    startDate = Application.Max(doj, DateSerial(2010, 1, 1)) ' accruals start from 1-Jan-2010
     plAcc = 0: slAcc = 0: clAcc = 0
 
     Dim cur As Date
     cur = DateSerial(Year(startDate), Month(startDate), 1)
 
     Do While cur <= asOf
-        ' add monthly accrual
+        ' monthly accrual
         plAcc = Application.Min(PL_CAP, plAcc + (PL_YEARLY / 12#))
         slAcc = slAcc + (SL_YEARLY / 12#)
         clAcc = clAcc + (CL_YEARLY / 12#)
@@ -70,7 +70,7 @@ Public Sub RunReport()
     Set wsEmp = ThisWorkbook.Sheets("Employee Data").ListObjects(EMP_TABLE)
     Set wsLv = ThisWorkbook.Sheets("Leave Status").ListObjects(LV_TABLE)
 
-    ' delete old
+    ' delete old report
     On Error Resume Next
     Application.DisplayAlerts = False
     ThisWorkbook.Sheets("FilteredData").Delete
@@ -81,12 +81,13 @@ Public Sub RunReport()
     Set wsOut = ThisWorkbook.Sheets.Add
     wsOut.Name = "FilteredData"
 
-    ' Now 15 columns (added Net_Leave at the end)
+    ' header row (15 columns including Net_Leave)
     wsOut.Range("A1:O1").Value = Array("EmpID", "Name", "Designation", "Team", "JoinYear", _
-        "PL_Balance", "SL_Balance", "CL_Balance", "PL_Accrued", "SL_Accrued", "CL_Accrued", _
+        "PL_Balance", "SL_Balance", "CL_Balance", _
+        "PL_Accrued", "SL_Accrued", "CL_Accrued", _
         "PL_Taken", "SL_Taken", "CL_Taken", "Net_Leave")
 
-    ' load balances
+    ' load leave balances into dictionary
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
     Dim lr As ListRow, key As String
     For Each lr In wsLv.ListRows
@@ -96,6 +97,7 @@ Public Sub RunReport()
         lvDict(key & "|CL") = NzD(lr.Range.Columns(wsLv.ListColumns(LV_CL).Index).Value)
     Next lr
 
+    ' build output rows
     Dim r As ListRow, empId, nm, des, tm, jy, doj
     Dim plBal#, slBal#, clBal#, plAcc#, slAcc#, clAcc#
     Dim rowOut&: rowOut = 2
@@ -120,7 +122,7 @@ Public Sub RunReport()
         slTaken = slAcc - slBal
         clTaken = clAcc - clBal
 
-        ' New column Net_Leave = PL_Balance + SL_Balance + CL_Balance
+        ' Net_Leave = PL_Balance + SL_Balance + CL_Balance
         Dim netLeave#
         netLeave = plBal + slBal + clBal
 
@@ -132,7 +134,7 @@ Public Sub RunReport()
         rowOut = rowOut + 1
     Next r
 
-    ' ===== SORT BY Net_Leave (column 15) DESCENDING =====
+    ' ===== SORT BY Net_Leave (Column O) DESC =====
     Dim lastRow As Long
     lastRow = wsOut.Cells(wsOut.Rows.Count, "A").End(xlUp).Row
     wsOut.Sort.SortFields.Clear
@@ -145,48 +147,13 @@ Public Sub RunReport()
         .Apply
     End With
 
-    ApplyFormatting wsOut
     wsOut.Columns.AutoFit
+    MsgBox "Report ready with accruals, taken leaves & Net_Leave (sorted).", vbInformation
 
-    MsgBox "Report ready with accruals, taken leaves & net leave (sorted).", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
 
 ErrH:
     Application.ScreenUpdating = True
     MsgBox "RunReport error: " & Err.Description, vbCritical
-End Sub
-
-' ====== FORMATTING ======
-Private Sub ApplyFormatting(ws As Worksheet)
-    Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    If lastRow < 2 Then Exit Sub
-
-    Dim maxBal As Double
-    maxBal = Application.Max(ws.Range("F2:H" & lastRow)) ' highest among PL/SL/CL balances
-
-    Dim r As Long
-    For r = 2 To lastRow
-        Dim plTaken As Double, slTaken As Double, clTaken As Double
-        Dim diff As Double
-
-        plTaken = ws.Cells(r, 12).Value
-        slTaken = ws.Cells(r, 13).Value
-        clTaken = ws.Cells(r, 14).Value
-        diff = (plTaken + slTaken + clTaken)
-
-        ' highlight negative diff
-        If diff < 0 Then
-            ws.Rows(r).Interior.Color = vbRed
-            ws.Rows(r).Font.Color = vbWhite
-        End If
-
-        ' highest balance row
-        Dim rowBal As Double
-        rowBal = Application.Max(ws.Cells(r, 6).Resize(1, 3))
-        If rowBal = maxBal Then
-            ws.Rows(r).Interior.Color = vbGreen
-            ws.Rows(r).Font.Color = vbBlack
-        End If
-    Next r
 End Sub
