@@ -81,10 +81,11 @@ Public Sub RunReport()
     Set wsOut = ThisWorkbook.Sheets.Add
     wsOut.Name = "FilteredData"
     
-    wsOut.Range("A1:O1").Value = Array("EmpID","Name","Designation","Team","JoinYear", _
+    wsOut.Range("A1:Q1").Value = Array("EmpID","Name","Designation","Team","JoinYear", _
         "PL_Balance","SL_Balance","CL_Balance", _
         "PL_Accrued","SL_Accrued","CL_Accrued", _
-        "PL_Taken","SL_Taken","CL_Taken","Net_Leave")
+        "PL_Taken","SL_Taken","CL_Taken", _
+        "Net_Leave_Taken","Net_Leave_Balance")
     
     ' load balances
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
@@ -115,32 +116,36 @@ Public Sub RunReport()
         
         Call ComputeAccruals(doj, asOf, plAcc, slAcc, clAcc)
         
-        Dim plTaken#, slTaken#, clTaken#, netLeave#
+        Dim plTaken#, slTaken#, clTaken#
         plTaken = plAcc - plBal
         slTaken = slAcc - slBal
         clTaken = clAcc - clBal
-        netLeave = plTaken + slTaken + clTaken
         
-        wsOut.Cells(rowOut, 1).Resize(1, 15).Value = Array(empId, nm, des, tm, jy, _
+        Dim netTaken#, netBalance#
+        netTaken = plTaken + slTaken + clTaken
+        netBalance = plBal + slBal + clBal
+        
+        wsOut.Cells(rowOut, 1).Resize(1, 17).Value = Array(empId, nm, des, tm, jy, _
             plBal, slBal, clBal, _
             Round(plAcc, 2), Round(slAcc, 2), Round(clAcc, 2), _
-            Round(plTaken, 2), Round(slTaken, 2), Round(clTaken, 2), Round(netLeave, 2))
+            Round(plTaken, 2), Round(slTaken, 2), Round(clTaken, 2), _
+            Round(netTaken, 2), Round(netBalance, 2))
         rowOut = rowOut + 1
     Next r
     
-    ' === Sort by Net_Leave descending (column 15) ===
+    ' === Sort by Net_Leave_Balance descending (column Q, i.e., 17) ===
     With wsOut.Sort
         .SortFields.Clear
-        .SortFields.Add Key:=wsOut.Range("O2:O" & rowOut - 1), _
+        .SortFields.Add Key:=wsOut.Range("Q2:Q" & rowOut - 1), _
             SortOn:=xlSortOnValues, Order:=xlDescending, DataOption:=xlSortNormal
-        .SetRange wsOut.Range("A1:O" & rowOut - 1)
+        .SetRange wsOut.Range("A1:Q" & rowOut - 1)
         .Header = xlYes
         .Apply
     End With
     
     ApplyFormatting wsOut
     wsOut.Columns.AutoFit
-    MsgBox "Report ready with accruals, taken leaves & net leave (sorted).", vbInformation
+    MsgBox "Report ready with accruals, taken & net leave (sorted by balance).", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
     
@@ -154,25 +159,21 @@ Private Sub ApplyFormatting(ws As Worksheet)
     Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     If lastRow < 2 Then Exit Sub
     
-    ' find max Net_Leave
-    Dim maxNet As Double
-    maxNet = Application.Max(ws.Range("O2:O" & lastRow))
+    Dim maxBal As Double, minBal As Double
+    maxBal = Application.Max(ws.Range("Q2:Q" & lastRow))
+    minBal = Application.Min(ws.Range("Q2:Q" & lastRow))
     
     Dim r As Long
     For r = 2 To lastRow
-        Dim netLeave As Double
-        netLeave = ws.Cells(r, 15).Value
+        Dim bal As Double
+        bal = ws.Cells(r, 17).Value
         
-        ' highlight negative net leave
-        If netLeave < 0 Then
-            ws.Rows(r).Interior.Color = vbRed
-            ws.Rows(r).Font.Color = vbWhite
-        End If
-        
-        ' highlight row with max net leave
-        If netLeave = maxNet Then
+        If bal = maxBal Then
             ws.Rows(r).Interior.Color = vbGreen
             ws.Rows(r).Font.Color = vbBlack
+        ElseIf bal = minBal Then
+            ws.Rows(r).Interior.Color = vbRed
+            ws.Rows(r).Font.Color = vbWhite
         End If
     Next r
 End Sub
