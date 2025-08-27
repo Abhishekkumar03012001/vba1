@@ -114,18 +114,27 @@ Public Sub InitLists()
     If d2.Count > 0 Then wsL.Range("B3").Resize(d2.Count, 1).Value = Application.Transpose(d2.Items)
     If d3.Count > 0 Then wsL.Range("C3").Resize(d3.Count, 1).Value = Application.Transpose(d3.Items)
     
-    ' Data validation on Dashboard cells (dynamic using INDEX & COUNTA)
+    ' --- Safe range definitions ---
+    Dim lastRowA As Long, lastRowB As Long, lastRowC As Long
+    lastRowA = Application.Max(2, wsL.Cells(wsL.Rows.Count, "A").End(xlUp).Row)
+    lastRowB = Application.Max(2, wsL.Cells(wsL.Rows.Count, "B").End(xlUp).Row)
+    lastRowC = Application.Max(2, wsL.Cells(wsL.Rows.Count, "C").End(xlUp).Row)
+    
+    ' Data validation on Dashboard cells (never fails, even if only "All")
     With Dsh.Range("B4").Validation
         .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:="=Lists!A2:INDEX(Lists!A:A,COUNTA(Lists!A:A))"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+             Formula1:="=Lists!A2:A" & lastRowA
     End With
     With Dsh.Range("B5").Validation
         .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:="=Lists!B2:INDEX(Lists!B:B,COUNTA(Lists!B:B))"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+             Formula1:="=Lists!B2:B" & lastRowB
     End With
     With Dsh.Range("B6").Validation
         .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:="=Lists!C2:INDEX(Lists!C:C,COUNTA(Lists!C:C))"
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+             Formula1:="=Lists!C2:C" & lastRowC
     End With
     
     MsgBox "Lists initialized and Dashboard dropdowns created.", vbInformation
@@ -133,6 +142,7 @@ Public Sub InitLists()
 ErrH:
     MsgBox "InitLists error: " & Err.Description, vbCritical
 End Sub
+
 
 ' ====== RUN REPORT (creates FilteredData sheet) ======
 Public Sub RunReport()
