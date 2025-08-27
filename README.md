@@ -1,123 +1,156 @@
-Option Explicit
-
-Sub GenerateDATA2()
+' ====== RUN REPORT (with accruals, yearly flush, PL cap) ======
+Public Sub RunReport()
     On Error GoTo ErrH
     Application.ScreenUpdating = False
     
     Dim wsEmp As ListObject, wsLv As ListObject
-    Set wsEmp = ThisWorkbook.Sheets("Employee Data").ListObjects("EMP_TABLE")
-    Set wsLv = ThisWorkbook.Sheets("Leave Status").ListObjects("LV_TABLE")
+    Set wsEmp = ThisWorkbook.Sheets("Employee Data").ListObjects(EMP_TABLE)
+    Set wsLv = ThisWorkbook.Sheets("Leave Status").ListObjects(LV_TABLE)
     
-    ' Delete old DATA2 sheet if exists
+    ' Delete old sheet if exists
     On Error Resume Next
     Application.DisplayAlerts = False
-    ThisWorkbook.Sheets("DATA2").Delete
+    ThisWorkbook.Sheets("FilteredData").Delete
     Application.DisplayAlerts = True
     On Error GoTo 0
     
-    ' Create new DATA2 sheet
     Dim wsOut As Worksheet
-    Set wsOut = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-    wsOut.Name = "DATA2"
+    Set wsOut = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsOut.Name = "FilteredData"
     
-    ' Headers
-    wsOut.Range("A1:I1").Value = Array("Employee ID", "Name", "Team", "JoinYear", _
-                                       "PL_Balance", "SL_Balance", _
-                                       "MetricValue", "MetricDetail", "TotalBalance")
+    wsOut.Range("A1:O1").Value = Array("Employee ID", "Name", "Designation", "Team", "JoinYear", _
+                                       "PL_Balance", "SL_Balance", "CL_Balance", _
+                                       "PL_Received", "SL_Received", "CL_Received", _
+                                       "Total_Received", "Total_Taken", "Difference", _
+                                       "MetricValue", "MetricDetail")
     
-    ' Build Leave lookup dictionary
+    ' Build leave lookup dictionary (balances as of now)
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
     Dim lr As ListRow, key As String
     For Each lr In wsLv.ListRows
-        key = CStr(lr.Range.Cells(1, wsLv.ListColumns("Employee ID").Index).Value)
-        lvDict(key & "|PL") = NzD(lr.Range.Cells(1, wsLv.ListColumns("PL").Index).Value)
-        lvDict(key & "|SL") = NzD(lr.Range.Cells(1, wsLv.ListColumns("SL").Index).Value)
+        key = CStr(lr.Range.Columns(wsLv.ListColumns(EMP_ID).Index).Value)
+        lvDict(key & "|PL") = NzD(lr.Range.Columns(wsLv.ListColumns(LV_PL).Index).Value)
+        lvDict(key & "|SL") = NzD(lr.Range.Columns(wsLv.ListColumns(LV_SL).Index).Value)
+        lvDict(key & "|CL") = NzD(lr.Range.Columns(wsLv.ListColumns(LV_CL).Index).Value)
     Next lr
     
-    ' Process employees
-    Dim r As ListRow, empId, nm, tm, jy
-    Dim plBal#, slBal#, totalBal#, metric#, detail As String
+    Dim r As ListRow, empId, nm, des, tm, jy, doj
+    Dim plBal#, slBal#, clBal#
     Dim rowOut&: rowOut = 2
+    Dim asOf As Date: asOf = AsOfDateVal()
+    Dim baseDate As Date: baseDate = DateSerial(2010, 1, 1)
+    
+    Dim maxBal As Double: maxBal = -1
     
     For Each r In wsEmp.ListRows
-        empId = r.Range.Cells(1, wsEmp.ListColumns("Employee ID").Index).Value
-        nm = r.Range.Cells(1, wsEmp.ListColumns("Name").Index).Value
-        tm = r.Range.Cells(1, wsEmp.ListColumns("Team").Index).Value
-        jy = NzD(r.Range.Cells(1, wsEmp.ListColumns("JoinYear").Index).Value)
+        empId = r.Range.Columns(wsEmp.ListColumns(EMP_ID).Index).Value
+        nm = r.Range.Columns(wsEmp.ListColumns(EMP_NAME).Index).Value
+        des = r.Range.Columns(wsEmp.ListColumns(EMP_DESIG).Index).Value
+        tm = r.Range.Columns(wsEmp.ListColumns(EMP_TEAM).Index).Value
+        jy = r.Range.Columns(wsEmp.ListColumns(EMP_JOINYEAR).Index).Value
+        doj = r.Range.Columns(wsEmp.ListColumns(EMP_DOJ).Index).Value
         
-        ' Apply Dashboard Filters
-        If JoinYearSel <> "All" Then If CStr(jy) <> CStr(JoinYearSel) Then GoTo NextEmp
-        If TeamSel <> "All" Then If CStr(tm) <> CStr(TeamSel) Then GoTo NextEmp
-        If DesigSel <> "All" Then
-            If r.Range.Cells(1, wsEmp.ListColumns("Designation").Index).Value <> DesigSel Then GoTo NextEmp
-        End If
+        ' filters
+        If JoinYearSel <> "All" Then If CStr(jy) <> JoinYearSel Then GoTo NextEmp
+        If DesigSel <> "All" Then If CStr(des) <> DesigSel Then GoTo NextEmp
+        If TeamSel <> "All" Then If CStr(tm) <> TeamSel Then GoTo NextEmp
         
-        ' Balances
+        ' balances from Leave Status
         plBal = NzD(lvDict(CStr(empId) & "|PL"))
         slBal = NzD(lvDict(CStr(empId) & "|SL"))
-        totalBal = plBal + slBal
+        clBal = NzD(lvDict(CStr(empId) & "|CL"))
         
-        ' Metric selection
+        ' ==== NEW ACCRUAL RULES ====
+        Dim startDate As Date
+        startDate = IIf(doj > baseDate, doj, baseDate)
+        
+        ' PL accrues since DOJ, capped at 30
+        Dim monthsWorked As Long
+        monthsWorked = DateDiff("m", startDate, asOf)
+        If monthsWorked < 0 Then monthsWorked = 0
+        Dim plReceived As Double
+        plReceived = monthsWorked * (18 / 12)
+        If plReceived > 30 Then plReceived = 30
+        
+        ' SL/CL accrue only in the current year, flush every Jan
+        Dim yearStart As Date: yearStart = DateSerial(Year(asOf), 1, 1)
+        If doj > yearStart Then yearStart = doj
+        
+        Dim monthsThisYear As Long
+        monthsThisYear = DateDiff("m", yearStart, asOf)
+        If monthsThisYear < 0 Then monthsThisYear = 0
+        
+        Dim slReceived As Double, clReceived As Double
+        slReceived = monthsThisYear * (7 / 12)
+        clReceived = monthsThisYear * (7 / 12)
+        
+        ' Totals
+        Dim totalReceived#, totalTaken#, diff#
+        totalReceived = plReceived + slReceived + clReceived
+        
+        totalTaken = totalReceived - (plBal + slBal + clBal)
+        diff = (plBal + slBal + clBal) - totalTaken
+        
+        ' Metric (example: balance-based)
+        Dim metric#, detail As String
         Select Case UCase(LeaveTypeSel())
             Case "PL"
-                metric = PickMetric(plBal, plBal)   ' use PL only
+                metric = plBal
                 detail = "PL-" & MetricSel()
             Case "SL"
-                metric = PickMetric(slBal, slBal)   ' use SL only
+                metric = slBal
                 detail = "SL-" & MetricSel()
+            Case "CL"
+                metric = clBal
+                detail = "CL-" & MetricSel()
             Case Else
-                metric = PickMetric(totalBal, totalBal)   ' use total
+                metric = plBal + slBal + clBal
                 detail = "Total-" & MetricSel()
         End Select
         
-        ' Output row
-        wsOut.Cells(rowOut, 1).Resize(1, 9).Value = _
-            Array(empId, nm, tm, jy, plBal, slBal, metric, detail, totalBal)
+        wsOut.Cells(rowOut, 1).Resize(1, 15).Value = _
+            Array(empId, nm, des, tm, jy, _
+                  plBal, slBal, clBal, _
+                  plReceived, slReceived, clReceived, _
+                  totalReceived, totalTaken, diff, _
+                  metric, detail)
+        
+        If (plBal + slBal + clBal) > maxBal Then
+            maxBal = (plBal + slBal + clBal)
+        End If
         rowOut = rowOut + 1
 NextEmp:
     Next r
     
-    ' Sort by MetricValue and keep Top N
-    If rowOut > 2 Then
-        wsOut.Range("A1:I" & rowOut - 1).Sort Key1:=wsOut.Range("G2"), Order1:=xlDescending, Header:=xlYes
-        Dim keepRows As Long: keepRows = Application.Min(TopNSel, rowOut - 2)
-        If rowOut - 2 > keepRows Then wsOut.Rows(keepRows + 2 & ":" & rowOut - 1).Delete
-    End If
+    ' === Highlighting ===
+    Dim lastRow As Long: lastRow = wsOut.Cells(wsOut.Rows.Count, "A").End(xlUp).Row
+    Dim c As Range
     
-    ' Formatting
+    ' Negative difference = Red
+    For Each c In wsOut.Range("N2:N" & lastRow)
+        If c.Value < 0 Then c.Interior.Color = vbRed
+    Next c
+    
+    ' Max balance = Green
+    For Each c In wsOut.Range("F2:H" & lastRow) ' PL, SL, CL balances
+        If Application.Sum(c.EntireRow.Range("F1:H1")) = 0 Then GoTo SkipCheck
+        If Application.Sum(c.EntireRow.Range("F" & c.Row & ":H" & c.Row)) = maxBal Then
+            c.Interior.Color = vbGreen
+        End If
+SkipCheck:
+    Next c
+    
+    ' formatting
     With wsOut.UsedRange
         .Columns.AutoFit
         .Rows(1).Font.Bold = True
         .Borders.LineStyle = xlContinuous
     End With
     
-    MsgBox "Report ready: sheet 'DATA2' created.", vbInformation
+    MsgBox "Report ready: sheet 'FilteredData' created.", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
-    
 ErrH:
     Application.ScreenUpdating = True
-    MsgBox "Error in GenerateDATA2: " & Err.Description, vbCritical
+    MsgBox "RunReport error: " & Err.Description, vbCritical
 End Sub
-
-' --- Support Functions ---
-Private Function NzD(v As Variant) As Double
-    If IsError(v) Or IsNull(v) Or IsEmpty(v) Or Trim(v & "") = "" Then
-        NzD = 0
-    Else
-        NzD = CDbl(v)
-    End If
-End Function
-
-Private Function PickMetric(balance As Double, accrued As Double) As Double
-    Select Case UCase(MetricSel())
-        Case "BALANCE"
-            PickMetric = balance
-        Case "ACCRUED"
-            PickMetric = accrued
-        Case "DIFF"
-            PickMetric = balance - accrued
-        Case Else
-            PickMetric = balance
-    End Select
-End Function
