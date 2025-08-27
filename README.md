@@ -1,60 +1,67 @@
 Option Explicit
 
-' === Safe Null/Empty to Double converter ===
-Private Function NzD(val As Variant) As Double
-    If IsError(val) Then
+' ====== CONFIG ======
+Private Const PL_YEARLY As Double = 18
+Private Const SL_YEARLY As Double = 7
+Private Const CL_YEARLY As Double = 7
+Private Const PL_CAP As Double = 30
+
+' Table names
+Private Const EMP_TABLE As String = "tblEmp"
+Private Const LV_TABLE As String = "tblLeave"
+
+' Column header names
+Private Const EMP_ID As String = "Employee ID"
+Private Const EMP_NAME As String = "Name"
+Private Const EMP_DESIG As String = "Designation"
+Private Const EMP_TEAM As String = "Team"
+Private Const EMP_DOJ As String = "Date of joining"
+Private Const EMP_JOINYEAR As String = "JoinYear"
+
+Private Const LV_PL As String = "PL"
+Private Const LV_SL As String = "SL"
+Private Const LV_CL As String = "CL"
+
+' Dashboard
+Private Function Dsh() As Worksheet: Set Dsh = ThisWorkbook.Sheets("Dashboard"): End Function
+Private Function AsOfDateVal() As Date: AsOfDateVal = Dsh.Range("B2").Value: End Function
+
+' ====== UTILITY ======
+Private Function NzD(v) As Double
+    If IsError(v) Or IsEmpty(v) Or IsNull(v) Or v = "" Then
         NzD = 0
-    ElseIf IsEmpty(val) Or IsNull(val) Or Trim(CStr(val)) = "" Then
-        NzD = 0
-    ElseIf IsNumeric(val) Then
-        NzD = CDbl(val)
     Else
-        NzD = 0
+        NzD = CDbl(v)
     End If
 End Function
 
-' === Returns the As-Of date used by the report ===
-Private Function AsOfDateVal() As Date
-    Dim v As Variant
-    On Error Resume Next
-
-    ' 1) Named range AsOfDate
-    v = vbNull
-    If ThisWorkbook.Names.Count > 0 Then
-        v = ThisWorkbook.Names("AsOfDate").RefersToRange.Value
-        If Err.Number = 0 Then
-            If Not IsEmpty(v) Then AsOfDateVal = CDate(v): Exit Function
+' ====== ACCRUAL CALC ======
+Private Sub ComputeAccruals(ByVal doj As Date, ByVal asOf As Date, _
+                            ByRef plAcc As Double, ByRef slAcc As Double, ByRef clAcc As Double)
+    Dim startDate As Date
+    startDate = Application.Max(doj, DateSerial(2010, 1, 1)) ' All start from 1-Jan-2010
+    
+    plAcc = 0: slAcc = 0: clAcc = 0
+    Dim cur As Date
+    cur = DateSerial(Year(startDate), Month(startDate), 1)
+    
+    Do While cur <= asOf
+        ' add monthly accrual
+        plAcc = Application.Min(PL_CAP, plAcc + (PL_YEARLY / 12#))
+        slAcc = slAcc + (SL_YEARLY / 12#)
+        clAcc = clAcc + (CL_YEARLY / 12#)
+        
+        ' flush SL and CL at year end
+        If Month(cur) = 12 And Day(cur) = 1 Then
+            slAcc = 0
+            clAcc = 0
         End If
-        Err.Clear
-    End If
+        
+        cur = DateAdd("m", 1, cur)
+    Loop
+End Sub
 
-    ' 2) Dashboard!B2
-    v = ThisWorkbook.Worksheets("Dashboard").Range("B2").Value
-    If Err.Number = 0 Then
-        If Not IsEmpty(v) Then AsOfDateVal = CDate(v): Exit Function
-    End If
-    Err.Clear
-
-    ' 3) Settings!B2
-    v = ThisWorkbook.Worksheets("Settings").Range("B2").Value
-    If Err.Number = 0 Then
-        If Not IsEmpty(v) Then AsOfDateVal = CDate(v): Exit Function
-    End If
-    Err.Clear
-
-    ' 4) Prompt user (default = today)
-    Dim s As String
-    s = InputBox("Enter As-Of date (yyyy-mm-dd). Leave blank for today:", _
-                 "As-Of Date", Format(Date, "yyyy-mm-dd"))
-    If Trim(s) <> "" Then
-        If IsDate(s) Then AsOfDateVal = CDate(s): Exit Function
-    End If
-
-    ' 5) fallback to today
-    AsOfDateVal = Date
-End Function
-
-' ====== MAIN REPORT MACRO ======
+' ====== RUN REPORT ======
 Public Sub RunReport()
     On Error GoTo ErrH
     Application.ScreenUpdating = False
@@ -63,7 +70,7 @@ Public Sub RunReport()
     Set wsEmp = ThisWorkbook.Sheets("Employee Data").ListObjects(EMP_TABLE)
     Set wsLv = ThisWorkbook.Sheets("Leave Status").ListObjects(LV_TABLE)
     
-    ' Delete old sheet if exists
+    ' delete old
     On Error Resume Next
     Application.DisplayAlerts = False
     ThisWorkbook.Sheets("FilteredData").Delete
@@ -71,16 +78,15 @@ Public Sub RunReport()
     On Error GoTo 0
     
     Dim wsOut As Worksheet
-    Set wsOut = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    Set wsOut = ThisWorkbook.Sheets.Add
     wsOut.Name = "FilteredData"
     
-    wsOut.Range("A1:O1").Value = Array("Employee ID", "Name", "Designation", "Team", "JoinYear", _
-                                       "PL_Balance", "SL_Balance", "CL_Balance", _
-                                       "PL_Received", "SL_Received", "CL_Received", _
-                                       "Total_Received", "Total_Taken", "Difference", _
-                                       "MetricValue", "MetricDetail")
+    wsOut.Range("A1:N1").Value = Array("EmpID","Name","Designation","Team","JoinYear", _
+        "PL_Balance","SL_Balance","CL_Balance", _
+        "PL_Accrued","SL_Accrued","CL_Accrued", _
+        "PL_Taken","SL_Taken","CL_Taken")
     
-    ' Build leave lookup dictionary
+    ' load balances
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
     Dim lr As ListRow, key As String
     For Each lr In wsLv.ListRows
@@ -91,12 +97,9 @@ Public Sub RunReport()
     Next lr
     
     Dim r As ListRow, empId, nm, des, tm, jy, doj
-    Dim plBal#, slBal#, clBal#
+    Dim plBal#, slBal#, clBal#, plAcc#, slAcc#, clAcc#
     Dim rowOut&: rowOut = 2
     Dim asOf As Date: asOf = AsOfDateVal()
-    Dim baseDate As Date: baseDate = DateSerial(2010, 1, 1)
-    
-    Dim maxBal As Double: maxBal = -1
     
     For Each r In wsEmp.ListRows
         empId = r.Range.Columns(wsEmp.ListColumns(EMP_ID).Index).Value
@@ -106,101 +109,65 @@ Public Sub RunReport()
         jy = r.Range.Columns(wsEmp.ListColumns(EMP_JOINYEAR).Index).Value
         doj = r.Range.Columns(wsEmp.ListColumns(EMP_DOJ).Index).Value
         
-        ' balances from Leave Status
         plBal = NzD(lvDict(CStr(empId) & "|PL"))
         slBal = NzD(lvDict(CStr(empId) & "|SL"))
         clBal = NzD(lvDict(CStr(empId) & "|CL"))
         
-        ' ==== LEAVE ACCRUAL RULES ====
-        Dim startDate As Date
-        startDate = IIf(doj > baseDate, doj, baseDate)
+        Call ComputeAccruals(doj, asOf, plAcc, slAcc, clAcc)
         
-        ' PL accrues since DOJ, capped at 30
-        Dim monthsWorked As Long
-        monthsWorked = DateDiff("m", startDate, asOf)
-        If monthsWorked < 0 Then monthsWorked = 0
-        Dim plReceived As Double
-        plReceived = monthsWorked * (18 / 12)
-        If plReceived > 30 Then plReceived = 30
+        Dim plTaken#, slTaken#, clTaken#
+        plTaken = plAcc - plBal
+        slTaken = slAcc - slBal
+        clTaken = clAcc - clBal
         
-        ' SL/CL accrue only in the current year, flush every Jan
-        Dim yearStart As Date: yearStart = DateSerial(Year(asOf), 1, 1)
-        If doj > yearStart Then yearStart = doj
-        
-        Dim monthsThisYear As Long
-        monthsThisYear = DateDiff("m", yearStart, asOf)
-        If monthsThisYear < 0 Then monthsThisYear = 0
-        
-        Dim slReceived As Double, clReceived As Double
-        slReceived = monthsThisYear * (7 / 12)
-        If slReceived > 7 Then slReceived = 7
-        clReceived = monthsThisYear * (7 / 12)
-        If clReceived > 7 Then clReceived = 7
-        
-        ' Totals
-        Dim totalReceived#, totalTaken#, diff#
-        totalReceived = plReceived + slReceived + clReceived
-        totalTaken = totalReceived - (plBal + slBal + clBal)
-        diff = (plBal + slBal + clBal) - totalTaken
-        
-        ' Metric (example)
-        Dim metric#, detail As String
-        Select Case UCase(LeaveTypeSel())
-            Case "PL"
-                metric = plBal
-                detail = "PL-" & MetricSel()
-            Case "SL"
-                metric = slBal
-                detail = "SL-" & MetricSel()
-            Case "CL"
-                metric = clBal
-                detail = "CL-" & MetricSel()
-            Case Else
-                metric = plBal + slBal + clBal
-                detail = "Total-" & MetricSel()
-        End Select
-        
-        wsOut.Cells(rowOut, 1).Resize(1, 15).Value = _
-            Array(empId, nm, des, tm, jy, _
-                  plBal, slBal, clBal, _
-                  plReceived, slReceived, clReceived, _
-                  totalReceived, totalTaken, diff, _
-                  metric, detail)
-        
-        If (plBal + slBal + clBal) > maxBal Then
-            maxBal = (plBal + slBal + clBal)
-        End If
+        wsOut.Cells(rowOut, 1).Resize(1, 14).Value = Array(empId, nm, des, tm, jy, _
+            plBal, slBal, clBal, _
+            Round(plAcc, 2), Round(slAcc, 2), Round(clAcc, 2), _
+            Round(plTaken, 2), Round(slTaken, 2), Round(clTaken, 2))
         rowOut = rowOut + 1
     Next r
     
-    ' === Highlighting ===
-    Dim lastRow As Long: lastRow = wsOut.Cells(wsOut.Rows.Count, "A").End(xlUp).Row
-    Dim c As Range
-    
-    ' Negative difference = Red
-    For Each c In wsOut.Range("N2:N" & lastRow)
-        If c.Value < 0 Then c.Interior.Color = vbRed
-    Next c
-    
-    ' Max balance = Green
-    Dim rRow As Long
-    For rRow = 2 To lastRow
-        If (wsOut.Cells(rRow, 6).Value + wsOut.Cells(rRow, 7).Value + wsOut.Cells(rRow, 8).Value) = maxBal Then
-            wsOut.Range("F" & rRow & ":H" & rRow).Interior.Color = vbGreen
-        End If
-    Next rRow
-    
-    ' formatting
-    With wsOut.UsedRange
-        .Columns.AutoFit
-        .Rows(1).Font.Bold = True
-        .Borders.LineStyle = xlContinuous
-    End With
-    
-    MsgBox "Report ready: sheet 'FilteredData' created.", vbInformation
+    ApplyFormatting wsOut
+    wsOut.Columns.AutoFit
+    MsgBox "Report ready with accruals & taken leaves.", vbInformation
     Application.ScreenUpdating = True
     Exit Sub
+    
 ErrH:
     Application.ScreenUpdating = True
     MsgBox "RunReport error: " & Err.Description, vbCritical
+End Sub
+
+' ====== FORMATTING ======
+Private Sub ApplyFormatting(ws As Worksheet)
+    Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    If lastRow < 2 Then Exit Sub
+    
+    Dim maxBal As Double
+    maxBal = Application.Max(ws.Range("F2:H" & lastRow)) ' highest among PL/SL/CL balances
+    
+    Dim r As Long
+    For r = 2 To lastRow
+        Dim plTaken As Double, slTaken As Double, clTaken As Double
+        Dim diff As Double
+        
+        plTaken = ws.Cells(r, 12).Value
+        slTaken = ws.Cells(r, 13).Value
+        clTaken = ws.Cells(r, 14).Value
+        diff = (plTaken + slTaken + clTaken)
+        
+        ' highlight negative diff
+        If diff < 0 Then
+            ws.Rows(r).Interior.Color = vbRed
+            ws.Rows(r).Font.Color = vbWhite
+        End If
+        
+        ' highest balance row
+        Dim rowBal As Double
+        rowBal = Application.Max(ws.Cells(r, 6).Resize(1, 3))
+        If rowBal = maxBal Then
+            ws.Rows(r).Interior.Color = vbGreen
+            ws.Rows(r).Font.Color = vbBlack
+        End If
+    Next r
 End Sub
