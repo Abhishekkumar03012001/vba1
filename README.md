@@ -17,7 +17,7 @@ Private Const EMP_DESIG As String = "Designation"
 Private Const EMP_TEAM As String = "Team"
 Private Const EMP_DOJ As String = "Date of joining"
 Private Const EMP_JOINYEAR As String = "JoinYear"
-Private Const EMP_EXIT As String = "Date Left"   ' <<< NEW FIELD FOR EXIT DATE
+Private Const EMP_EXIT As String = "Exit Date"   ' <<< CHANGE this to your exact header if different
 Private Const LV_PL As String = "PL"
 Private Const LV_SL As String = "SL"
 Private Const LV_CL As String = "CL"
@@ -89,13 +89,13 @@ Public Sub RunReport()
     Set wsOut = ThisWorkbook.Sheets.Add
     wsOut.Name = "FilteredData"
 
-    ' Now include Accrued columns properly
+    ' Output headers
     wsOut.Range("A1:P1").Value = Array("EmpID", "Name", "Designation", "Team", "JoinYear", _
         "PL_Balance", "SL_Balance", "CL_Balance", _
         "PL_Accrued", "SL_Accrued", "CL_Accrued", _
         "PL_Taken", "SL_Taken", "CL_Taken", "Net_Leave", "ExitDate")
 
-    ' load balances
+    ' Load leave balances into dictionary
     Dim lvDict As Object: Set lvDict = CreateObject("Scripting.Dictionary")
     Dim lr As ListRow, key As String
     For Each lr In wsLv.ListRows
@@ -105,6 +105,13 @@ Public Sub RunReport()
         lvDict(key & "|CL") = NzD(lr.Range.Columns(wsLv.ListColumns(LV_CL).Index).Value)
     Next lr
 
+    ' Check if Exit Date column exists
+    Dim exitDateCol As Long
+    On Error Resume Next
+    exitDateCol = wsEmp.ListColumns(EMP_EXIT).Index
+    On Error GoTo 0
+
+    ' Process employees
     Dim r As ListRow, empId, nm, des, tm, jy, doj, exitDate
     Dim plBal#, slBal#, clBal#, plAcc#, slAcc#, clAcc#
     Dim rowOut&: rowOut = 2
@@ -117,7 +124,12 @@ Public Sub RunReport()
         tm = r.Range.Columns(wsEmp.ListColumns(EMP_TEAM).Index).Value
         jy = r.Range.Columns(wsEmp.ListColumns(EMP_JOINYEAR).Index).Value
         doj = r.Range.Columns(wsEmp.ListColumns(EMP_DOJ).Index).Value
-        exitDate = r.Range.Columns(wsEmp.ListColumns(EMP_EXIT).Index).Value
+
+        If exitDateCol > 0 Then
+            exitDate = r.Range.Columns(exitDateCol).Value
+        Else
+            exitDate = "" ' No exit column → active employee
+        End If
 
         plBal = NzD(lvDict(CStr(empId) & "|PL"))
         slBal = NzD(lvDict(CStr(empId) & "|SL"))
