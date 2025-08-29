@@ -1,6 +1,6 @@
 Option Explicit
 
-' ====== CONFIG ======
+' ===== CONFIG =====
 Private Const PL_YEARLY As Double = 18
 Private Const SL_YEARLY As Double = 7
 Private Const CL_YEARLY As Double = 7
@@ -10,121 +10,167 @@ Private Const PL_CAP As Double = 30
 Private Const EMP_TABLE As String = "tblEmp"
 Private Const LV_TABLE As String = "tblLeave"
 
-' Column header names (must match exactly in Excel)
+' Column header names
 Private Const EMP_ID As String = "Employee ID"
 Private Const EMP_NAME As String = "Name"
 Private Const EMP_TEAM As String = "Team"
 Private Const EMP_JOIN As String = "Join Date"
-Private Const EMP_EXIT As String = "Exit Date"   ' update if your header differs
+Private Const EMP_EXIT As String = "Exit Date"   ' optional column
 
-' ====== RUN REPORT ======
+' ===== RUN REPORT =====
 Public Sub RunReport()
     On Error GoTo ErrH
     Application.ScreenUpdating = False
     
     Dim wsEmp As ListObject, wsLv As ListObject
-    Set wsEmp = ThisWorkbook.Sheets(EMP_TABLE).ListObjects(1)
-    Set wsLv = ThisWorkbook.Sheets(LV_TABLE).ListObjects(1)
+    Dim wsOut As Worksheet
+    Dim lastRow As Long, outRow As Long
+    Dim r As ListRow
     
-    ' Delete old FilteredData if exists
-    Dim wsFD As Worksheet
+    ' Get tables
+    Set wsEmp = ThisWorkbook.Sheets(EMP_TABLE).ListObjects(EMP_TABLE)
+    Set wsLv = ThisWorkbook.Sheets(LV_TABLE).ListObjects(LV_TABLE)
+    
+    ' Create output sheet
     On Error Resume Next
-    Application.DisplayAlerts = False
-    ThisWorkbook.Sheets("FilteredData").Delete
-    Application.DisplayAlerts = True
+    Set wsOut = ThisWorkbook.Sheets("FilteredData")
+    If Not wsOut Is Nothing Then wsOut.Delete
     On Error GoTo 0
-    
-    Set wsFD = ThisWorkbook.Sheets.Add
-    wsFD.Name = "FilteredData"
+    Set wsOut = ThisWorkbook.Sheets.Add
+    wsOut.Name = "FilteredData"
     
     ' Headers
-    Dim headers As Variant
-    headers = Array("Emp_ID", "Name", "Team", "JoinYear", _
-                    "PL_Accrued", "SL_Accrued", "CL_Accrued", _
-                    "PL_Balance", "SL_Balance", "CL_Balance", _
-                    "Net_Leave_Balance")
-    Dim i As Long
-    For i = LBound(headers) To UBound(headers)
-        wsFD.Cells(1, i + 1).Value = headers(i)
-    Next
-    
-    ' Loop Employees
-    Dim r As ListRow, outRow As Long
+    wsOut.Range("A1:H1").Value = Array("Employee ID", "Name", "Team", "Join Year", _
+                                       "PL_Balance", "SL_Balance", "CL_Balance", "Total_Balance")
     outRow = 2
     
-    Dim joinDate As Date, exitDate As Variant
-    Dim yearsWorked As Double
-    
+    ' Loop employees
     For Each r In wsEmp.ListRows
-        joinDate = r.Range.Columns(wsEmp.ListColumns(EMP_JOIN).Index).Value
+        Dim empId As Variant, empName As String, empTeam As String
+        Dim joinDate As Date, exitDate As Variant
+        Dim plBal As Double, slBal As Double, clBal As Double, totalBal As Double
+        Dim joinYr As Long
         
-        ' Exit Date check
-        If ColumnExists(wsEmp, EMP_EXIT) Then
-            exitDate = r.Range.Columns(wsEmp.ListColumns(EMP_EXIT).Index).Value
-        Else
-            exitDate = ""
-        End If
+        empId = Nz(r.Range.Columns(wsEmp.ListColumns(EMP_ID).Index).Value)
+        empName = Nz(r.Range.Columns(wsEmp.ListColumns(EMP_NAME).Index).Value)
+        empTeam = Nz(r.Range.Columns(wsEmp.ListColumns(EMP_TEAM).Index).Value)
+        joinDate = NzDate(r.Range.Columns(wsEmp.ListColumns(EMP_JOIN).Index).Value)
+        joinYr = Year(joinDate)
         
-        If IsDate(exitDate) Then
-            yearsWorked = DateDiff("yyyy", joinDate, exitDate)
-        Else
-            yearsWorked = DateDiff("yyyy", joinDate, Date)
-        End If
-        If yearsWorked < 0 Then yearsWorked = 0
+        ' Exit date (optional)
+        exitDate = GetExitDate(r, wsEmp)
         
-        ' Accrued
-        Dim plAcc As Double, slAcc As Double, clAcc As Double
-        plAcc = Application.Min(PL_YEARLY * yearsWorked, PL_CAP)
-        slAcc = SL_YEARLY * yearsWorked
-        clAcc = CL_YEARLY * yearsWorked
+        ' Calculate balances
+        Call CalcBalances(joinDate, exitDate, plBal, slBal, clBal)
+        totalBal = plBal + slBal + clBal
         
-        ' TODO: subtract taken leave from tblLeave if required
-        
-        ' Output row
-        wsFD.Cells(outRow, 1).Value = r.Range.Columns(wsEmp.ListColumns(EMP_ID).Index).Value
-        wsFD.Cells(outRow, 2).Value = r.Range.Columns(wsEmp.ListColumns(EMP_NAME).Index).Value
-        wsFD.Cells(outRow, 3).Value = r.Range.Columns(wsEmp.ListColumns(EMP_TEAM).Index).Value
-        wsFD.Cells(outRow, 4).Value = Year(joinDate)
-        
-        wsFD.Cells(outRow, 5).Value = plAcc
-        wsFD.Cells(outRow, 6).Value = slAcc
-        wsFD.Cells(outRow, 7).Value = clAcc
-        
-        wsFD.Cells(outRow, 8).Value = plAcc
-        wsFD.Cells(outRow, 9).Value = slAcc
-        wsFD.Cells(outRow, 10).Value = clAcc
-        
-        wsFD.Cells(outRow, 11).FormulaR1C1 = "=RC[-3]+RC[-2]+RC[-1]"
-        
+        ' Write output
+        With wsOut
+            .Cells(outRow, 1).Value = empId
+            .Cells(outRow, 2).Value = empName
+            .Cells(outRow, 3).Value = empTeam
+            .Cells(outRow, 4).Value = joinYr
+            .Cells(outRow, 5).Value = plBal
+            .Cells(outRow, 6).Value = slBal
+            .Cells(outRow, 7).Value = clBal
+            .Cells(outRow, 8).Value = totalBal
+        End With
         outRow = outRow + 1
     Next r
     
-    ' Color formatting (max green, min red)
-    Dim lastRow As Long
-    lastRow = wsFD.Cells(wsFD.Rows.Count, "A").End(xlUp).Row
+    ' Highlight max/min balances
+    lastRow = wsOut.Cells(wsOut.Rows.Count, "H").End(xlUp).Row
+    Call HighlightBalances(wsOut, "H2:H" & lastRow)
     
-    Dim maxBal As Double, minBal As Double
-    maxBal = Application.Max(wsFD.Range("K2:K" & lastRow))
-    minBal = Application.Min(wsFD.Range("K2:K" & lastRow))
-    
-    Dim cell As Range
-    For Each cell In wsFD.Range("K2:K" & lastRow)
-        If cell.Value = maxBal Then cell.Interior.Color = vbGreen
-        If cell.Value = minBal Then cell.Interior.Color = vbRed
-    Next cell
-    
+    MsgBox "Report generated successfully!", vbInformation
     Application.ScreenUpdating = True
-    MsgBox "FilteredData created successfully!"
     Exit Sub
     
 ErrH:
     Application.ScreenUpdating = True
-    MsgBox "Error: " & Err.Description
+    MsgBox "Error: " & Err.Description, vbCritical
 End Sub
 
-' ====== Helper Function ======
-Private Function ColumnExists(lo As ListObject, colName As String) As Boolean
+' ===== HELPER: Calculate Balances =====
+Private Sub CalcBalances(joinDate As Date, exitDate As Variant, _
+                         ByRef plBal As Double, ByRef slBal As Double, ByRef clBal As Double)
+    Dim yr As Long, thisYr As Long
+    Dim yearsWorked As Long
+    
+    thisYr = Year(Date)
+    
+    If IsDate(joinDate) = False Then Exit Sub
+    
+    ' If exit date before today, stop at exit year
+    Dim endYr As Long
+    If IsDate(exitDate) Then
+        endYr = Year(exitDate)
+    Else
+        endYr = thisYr
+    End If
+    
+    yearsWorked = endYr - Year(joinDate) + 1
+    
+    Dim i As Long
+    plBal = 0: slBal = 0: clBal = 0
+    
+    For i = Year(joinDate) To endYr
+        ' Each year accrual
+        plBal = WorksheetFunction.Min(PL_CAP, plBal + PL_YEARLY)
+        slBal = SL_YEARLY    ' resets each year
+        clBal = CL_YEARLY    ' resets each year
+    Next i
+End Sub
+
+' ===== HELPER: Exit Date (optional column) =====
+Private Function GetExitDate(r As ListRow, wsEmp As ListObject) As Variant
+    Dim exitDateCol As Long
     On Error Resume Next
-    ColumnExists = Not lo.ListColumns(colName) Is Nothing
+    exitDateCol = wsEmp.ListColumns(EMP_EXIT).Index
     On Error GoTo 0
+    
+    If exitDateCol > 0 Then
+        GetExitDate = NzDate(r.Range.Columns(exitDateCol).Value)
+    Else
+        GetExitDate = Empty
+    End If
 End Function
+
+' ===== HELPER: Highlight Min/Max =====
+Private Sub HighlightBalances(ws As Worksheet, rngAddress As String)
+    Dim rng As Range
+    Set rng = ws.Range(rngAddress)
+    
+    Dim maxVal As Double, minVal As Double
+    maxVal = Application.Max(rng)
+    minVal = Application.Min(rng)
+    
+    Dim c As Range
+    For Each c In rng
+        If c.Value = maxVal Then
+            c.Interior.Color = vbGreen
+        ElseIf c.Value = minVal Then
+            c.Interior.Color = vbRed
+        Else
+            c.Interior.Color = xlNone
+        End If
+    Next c
+End Sub
+
+' ===== HELPERS =====
+Private Function Nz(v As Variant, Optional def As Variant = "") As Variant
+    If IsError(v) Or IsEmpty(v) Then
+        Nz = def
+    Else
+        Nz = v
+    End If
+End Function
+
+Private Function NzDate(v As Variant) As Date
+    If IsDate(v) Then
+        NzDate = CDate(v)
+    Else
+        NzDate = 0
+    End If
+End Function
+
