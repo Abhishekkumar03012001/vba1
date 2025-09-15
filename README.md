@@ -26,3 +26,32 @@ Enable drill-downs by client, region, adjuster, or claim type for root-cause ana
 Empower sales teams with data-driven insights to engage clients on cost savings, process improvements, and new project opportunities.
 
 This solution will act as a health check tool for client operations, reduce payout leakage, improve SLA compliance, and strengthen EXL’s positioning as a transformation partner.
+
+==========
+
+Problem Statement:
+
+Traditional SOP creation is time-consuming, manual, and error-prone.
+
+It takes 3 days (~24 hours) for a worker to create a single SOP.
+
+Relies on memory recall and post-process documentation, leading to missed steps and inconsistencies.
+
+Requires manual formatting, screenshots, and editing, making updates slow and costly.
+
+Results in text-heavy, hard-to-follow SOPs that reduce training efficiency and process compliance.
+
+Solution Statement:
+
+We developed a Python-based automated SOP generation system that:
+
+Captures screen/video in real time as the user performs tasks.
+
+Takes snapshots on-demand and prompts for step descriptions instantly.
+
+Automatically compiles all steps into a clean, visual SOP in PDF, Word, or HTML format.
+
+Saves a full video archive for training, audit, or reference purposes.
+
+Cuts SOP creation time from 24 hours to just 7 minutes, saving over 99% of time and cost.
+
