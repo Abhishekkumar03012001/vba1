@@ -1,35 +1,41 @@
-How Does Your Idea Fit into a Sales Context for EXL?
+Step 6. PPT Structure (2–3 Slides)
+Slide 1: Overview & Concept
 
-EXL works with global clients across insurance, healthcare, banking, and analytics, where process efficiency and documentation are crucial.
+Title: “Automatic SOP Generator – Market & Pricing Overview”
+Content:
 
-Faster SOP Creation = Faster Client Onboarding – EXL can create and share process documentation with clients in hours instead of days, speeding up project initiation.
+Brief intro (1–2 lines): “An AI-driven tool that automates SOP creation through screen tracking, OCR, and annotations.”
 
-Stronger Knowledge Transfer – Visual SOPs reduce errors in hand-offs between EXL and client teams, improving deliverables.
+Key offerings: SOP Recording, Step Annotation, Analytics, Custom Branding
 
-Differentiator in RFPs/Pitches – Demonstrating this automated documentation solution shows EXL’s commitment to innovation, efficiency, and digital transformation, giving a competitive edge in sales proposals.
+Target audience: Freelancers, Small businesses, Enterprises
 
+Slide 2: TCV Estimation
 
-==========================================
-Potential Industry Use Cases (Specify Industry)
-Industry	Use Case for Automated SOP Tool
-Insurance (P&C, Life, Health)	Creating claims processing SOPs, fraud investigation workflows, policy issuance guides.
-Banking & Financial Services	Documenting compliance processes, KYC/AML verification steps, risk assessment workflows.
-Healthcare	Recording EMR/EHR system workflows, compliance audits, clinical trial documentation.
-BPO / Shared Services	Training guides for transaction processing, HR/payroll operations, and client service scripts.
-Manufacturing	Machine operation SOPs, quality checklists, maintenance schedules.
-IT & Software Development	Deployment guides, test case execution, CI/CD pipeline documentation.
+Title: “Total Contract Value (TCV) Projection – 3 Years”
+Include a clean table like:
 
-This means the tool is cross-industry and highly scalable, opening up multiple new service offerings for EXL.
+Segment	Year 1	Year 2	Year 3	Total
+Individual	$100K	$200K	$300K	$600K
+Company	$150K	$225K	$375K	$750K
+Total Base				$1.35M
 
-=============================================
-How Can It Be Leveraged by Sales or Growth Teams?
+Add-ons: ~$25K–30K →
+Estimated Total: $1.38M – $1.4M (3 years)
 
-Sales Enablement – Equip sales teams with ready-to-share, visual SOP demos to showcase EXL’s digital solutions to prospects.
+Use a bar or line chart to visualize year-wise growth.
 
-Faster Pilots/POCs – Quickly document pilot processes during proof-of-concept projects, helping convert prospects faster.
+Slide 3: Target & Revenue Plan
 
-Upsell Opportunity – Package SOP creation as a value-added service for existing clients (process transformation, knowledge management).
+Title: “Growth and Revenue Roadmap”
+Points:
 
-Thought Leadership – Use this tool to create case studies or best practices, strengthening EXL’s positioning as a digital transformation partner.
+Launch Target: 5 companies + 100 individuals (H1 FY2026)
 
-Client Retention – Improved documentation reduces operational errors, directly impacting SLA adherence and client satisfaction.
+Short-term Goal: $250K revenue in Year 1
+
+Long-term Goal: $1.4M TCV in 3 years
+
+Expansion Plan: Partner with corporate training and BPM firms
+
+Add a small graph of Revenue Growth Over 3 Years
